@@ -90,7 +90,7 @@ def crossover_double_point(parent1: np.ndarray, parent2: np.ndarray) -> tuple[np
 def crossover_uniform(parent1: np.ndarray, parent2: np.ndarray, p: float = 0.5) -> tuple[np.ndarray, np.ndarray]:
     """
     Performs uniform crossover between two parents.
-        - For each gene, with probability `p`, genes are swapped.
+        - For each gene, with crossover probability `p`, genes are swapped.
     """
     mask = np.random.rand(len(parent1)) < p                                             # swap-decision mask (boolean)
                                                                                         # 'len(parent1)' random numbers between 0 and 1
@@ -104,16 +104,76 @@ def crossover_uniform(parent1: np.ndarray, parent2: np.ndarray, p: float = 0.5) 
 
     return offspring1, offspring2
 
+def crossover_blending(parent1: np.ndarray, parent2: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    For each gene position i, the Offspring-genes are computed using a convex combination of its Parent-genes
+    """
+    # Sample beta_i 'Uniformly' from [0,1] for each gene
+    beta = np.random.uniform(low=0.0, high=1.0, size=len(parent1))
+
+    # Compute offspring genes
+    offspring1 = np.clip(np.round(parent1 * beta + parent2 * (1 - beta)), 0, 199).astype(int)
+    offspring2 = np.clip(np.round(parent2 * beta + parent1 * (1 - beta)), 0, 199).astype(int)
+
+    return offspring1, offspring2
 
 
-def mutate(individual: np.ndarray) -> np.ndarray:
+
+def mutate_random(population: np.ndarray, num: int) -> np.ndarray:
     """
-    Mutates an individual chromosome, by randomly changing one gene to a new spectral band index.
+    Mutates by randomly changing one gene to a new spectral band index
     """
-    mutated = individual.copy()
-    gene_index = np.random.randint(0, len(mutated))
-    mutated[gene_index] = np.random.randint(0, 200)
-    return mutated
+    m, n = population.shape
+
+    # Build a list of eligible positions 
+    # 'Elitism' - Skip Candidate with the Highest Fitness Score
+    eligible_positions = [(i, j) for i in range(1, m) for j in range(n)]
+
+    # Choose 'num' positions randomly
+    if num <= len(eligible_positions):
+        chosen_indices = np.random.choice(len(eligible_positions), size=num, replace=False)             # without replacement
+    else:
+        chosen_indices = np.random.choice(len(eligible_positions), size=num, replace=True)              # with replacement
+
+    # Apply Mutation: for each chosen position, assign a random band value in [0,199]
+    for index in chosen_indices:
+        i, j = eligible_positions[index]
+        population[i, j] = np.random.randint(0, 200)
+
+    return population
+
+def mutate_normal(population: np.ndarray, num: int) -> np.ndarray:
+    """
+    For a given gene at position (i, j) with value p, the mutated value is computed as:
+       p' = p + sigma * z
+    """
+    m, n = population.shape
+
+    # Build a list of eligible positions 
+    # 'Elitism' - Skip Candidate with the Highest Fitness Score
+    eligible_positions = [(i, j) for i in range(1, m) for j in range(n)]
+
+    # Choose 'num' positions randomly
+    if num <= len(eligible_positions):
+        chosen_indices = np.random.choice(len(eligible_positions), size=num, replace=False)             # without replacement
+    else:
+        chosen_indices = np.random.choice(len(eligible_positions), size=num, replace=True)              # with replacement
+
+    # Apply Mutation: for each chosen position, assign a random band value in [0,199]
+    for index in chosen_indices:
+        i, j = eligible_positions[index]
+        current_gene_value = population[i, j]
+
+        # Standard deviation computed across all candidates (chromosomes) at gene position j
+        sigma = np.std(population[:, j])
+        # Sample z from standard normal distribution
+        z = np.random.normal(0, 1)
+
+        mutated_gene_value = current_gene_value + sigma * z
+        mutated_value = int(np.clip(round(mutated_value), 0, 199))
+        population[i, j] = mutated_gene_value
+
+    return population
 
 
 

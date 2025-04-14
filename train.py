@@ -25,6 +25,7 @@ def genetic_algorithm():
     n = 10                                                                                               # Number of genes per individual's chromosome.
     ind = 8                                                                                              # Population size (Set a value, such that 'ind' and 'ind//2' are even)
     generations = 3                                                                                      # Number of 'generations' to run.
+    num = 10                                                                                             # Number of positions in a population, to mutate
     
     # Load and preprocess the HyperSpectral Image.
     X, y = read_HSI()
@@ -82,20 +83,17 @@ def genetic_algorithm():
             parent1 = parents[idx1]
             parent2 = parents[idx2]
 
-            # 3.
-            off1, off2 = crossover_single_point(parent1, parent2)
-            # 4.
-            offspring.append(mutate(off1))
-            offspring.append(mutate(off2))
-
-        
-        # Combine the current population with the new offspring.
-        combined_pool = np.vstack((population, np.array(offspring)))
-        print("Combined pool (Population + Offspring):\n", combined_pool)
+            # 3. Crossover
+            off1, off2 = crossover_uniform(parent1, parent2)
+            offspring.append(off1)
+            offspring.append(off2)
         
         # New population = parents + offspring (N/2 + N/2 = N)
         population = np.vstack((parents, np.array(offspring)))
         print("New population:\n", population)
+
+        # 4. Mutation of the Population
+        population = mutate_normal(population, num)                                                 # in python, the same 'population' will be modified 
         
     # Output the final results.
     print("\nFinal Population (Best Band Combinations):\n", population)
