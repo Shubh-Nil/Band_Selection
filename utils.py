@@ -170,50 +170,112 @@ def mutate_normal(population: np.ndarray, num: int) -> np.ndarray:
         z = np.random.normal(0, 1)
 
         mutated_gene_value = current_gene_value + sigma * z
-        mutated_value = int(np.clip(round(mutated_value), 0, 199))
+        mutated_value = int(np.clip(round(mutated_gene_value), 0, 199))
         population[i, j] = mutated_gene_value
 
     return population
 
 
 
+def mean_class_vectors(candidate: np.ndarray, X_flat: np.ndarray, y_flat: np.ndarray) -> np.ndarray:
+    """
+    mean vector per class
+    """
+    
+    # Extract only the selected bands from X_flat
+    selected_X = X_flat[candidate, :]                                       
+
+    # compute mean vector per class
+    classes = np.unique(y_flat)
+    means = []
+    for c in classes:
+        mask = (y_flat == c)
+        if not np.any(mask):
+            continue
+        μ_c = selected_X[:, mask].mean(axis=1)  
+        means.append(μ_c)
+        
+    means = np.stack(means, axis=0) 
+    return means
+    
+
+
+def accuracy(candidate: np.ndarray, X_flat: np.ndarray, y_flat: np.ndarray, means: np.ndarray) -> float:
+    """
+    predicts class of each pixel vector using S.A.M principle
+    """
+    selected_X = X_flat[candidate, :]
+
+    # compute dot‐products between each class-mean and each pixel
+    dots = means @ selected_X
+
+    # normalize to get cosθ → (K,1) * (1,N)
+    mean_norms  = np.linalg.norm(means,     axis=1, keepdims=True)  # (K,1)
+    pix_norms   = np.linalg.norm(selected_X, axis=0, keepdims=True)  # (1,N)
+    cosines     = dots / (mean_norms * pix_norms + 1e-12)
+
+    # pick the class with highest cosine sim
+    preds = np.argmax(cosines, axis=0)
+
+    return float((preds == y_flat).mean())
+
+def average_distance(means: np.ndarray) -> float:
+    """
+    The mean over all pairwise distances between class‐mean vectors.
+    """   
+
+    # if there’s only one (or zero) class, no pairwise distance exists
+    n = means.shape[0]
+    if n < 2:
+        return 0.0
+
+    # sum up all pairwise distances
+    total_dist = 0.0
+    count = 0
+    for i in range(n):
+        for j in range(i+1, n):
+            total_dist += np.linalg.norm(means[i] - means[j])
+            count += 1
+
+    # average
+    return total_dist / count
+
+def average_correlation(candidate: np.ndarray, X_flat: np.ndarray) -> float:
+    """
+    Average Correlation = Average of Correlation values, for all the 'Unique' band pairs
+    """
+    # Extract only the selected bands from X_flat
+    selected_X = X_flat[candidate, :] 
+    
+    # Compute the correlation matrix among the selected bands
+    corr_matrix = np.corrcoef(selected_X)
+
+    n = corr_matrix.shape[0]
+    # Get indices of the upper triangle
+    upper_tri_indices = np.triu_indices(n, k=1)                                                     # k=1 -> exclude the diagonal
+                                                                                                    # k=0 -> include the diagonal
+    # Calculate the average correlation from the 'unique' band pairs
+    avg_corr = np.mean(corr_matrix[upper_tri_indices])
+    
+    return avg_corr
+
 def fitness(candidate: np.ndarray, X_flat: np.ndarray, y_flat: np.ndarray) -> float:
     """
-    Evaluates the fitness of a candidate chromosome (a set of spectral bands) using SVM classification.
-    
-    For each gene (spectral band index) in the candidate, the corresponding band data 
-    is extracted from the flattened HSI data, reshaped to a column vector, and used to 
-    train and test an SVM classifier. The weighted F1 score is computed, and the final 
-    fitness is the average F1 score over all genes.
-    
-    Args:
-        candidate (np.ndarray): Candidate chromosome containing spectral band indices.
-        X (np.ndarray): Flattened HSI data of shape (C, H*W) (each row corresponds to a band).
-        y (np.ndarray): Flattened ground truth array of shape (H*W,).
-        
-    Returns:
-        float: The average weighted F1 score across the bands in the candidate.
+    fitness score = alpha(Accuracy) + beta(Avg. Euclidean Distance) + (1-alpha-beta)(Avg. Correlation)
     """
-    scores = []                                                                                                      # F1 scores for each band (gene)
-    for band in candidate:                                                                                           # n bands <= total bands of HSI
-        band = int(band)
-        # Extract the data for this band and reshape to a column vector
-        x_data = X_flat[band].reshape(-1, 1)                                                                         # x_data -> band'th feature map of the HSI, as a column-vector                                      
-                                                                                                                     # x_data.shape = (H*W, 1)
-        X_train, X_test, y_train, y_test = train_test_split(x_data, y_flat, test_size=0.20, random_state=42)         # y.flat = (H*W,)
-        
-        clf = svm.SVC(decision_function_shape='ovo', probability=True)
-        clf.fit(X_train, y_train)                                                                                    # everytime SVM classifier is trained from scratch, for each of the n bands (genes)
-                                                                                                                     # for each of the 'ind' candidate chromosomes
-                                                                                                                     # across 'gen' generations
-        y_pred = clf.predict(X_test)
+    alpha = 0.4
+    beta = 0.3
 
-        score = f1_score(y_test, y_pred, average='weighted')
-        scores.append(score)
-    avg_score = np.mean(scores)
-    print("Score list:", scores)
-    print("Average Score:", avg_score)
-    return avg_score
+    means = mean_class_vectors(candidate, X_flat, y_flat)
+
+    acc = accuracy(candidate, X_flat, y_flat, means)
+    avg_dist = average_distance(means)
+    avg_corr = average_correlation(candidate, X_flat)
+
+    fitness_score = alpha*acc + beta*avg_dist + (1-alpha-beta)*avg_corr
+
+    print("Fitness:", fitness_score)
+    return fitness_score
 
 def fitness_all(pool: np.ndarray, X_flat: np.ndarray, y_flat: np.ndarray) -> list:
     """

@@ -43,7 +43,7 @@ def genetic_algorithm():
 
         # 1.
         # Evaluate fitness for the entire population
-        fitness_scores = fitness_all(population, X_flat, y_flat)
+        fitness_scores = np.array(fitness_all(population, X_flat, y_flat))
         print("Fitness scores:", fitness_scores)
 
         # Select the top 'ind//2' individuals based on fitness.
