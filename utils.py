@@ -4,7 +4,8 @@ from sklearn.model_selection import train_test_split
 from sklearn import svm
 from sklearn.metrics import f1_score
 
-def read_HSI() -> tuple[np.ndarray, np.ndarray]:
+
+def read_HSI(Image: str) -> tuple[np.ndarray, np.ndarray]:
     """
     Reads HyperSpectral Image (HSI) data and the Ground-truth labels from MATLAB .mat files.
     
@@ -12,8 +13,10 @@ def read_HSI() -> tuple[np.ndarray, np.ndarray]:
         X : HSI with shape (H, W, C)
         y : Ground-truth labels with shape (H, W)
     """
-    X = scipy.io.loadmat('Indian_pines_corrected.mat')['indian_pines_corrected']
-    y = scipy.io.loadmat('Indian_pines_gt.mat')['indian_pines_gt']
+    if Image == 'data/Indian_pines/Indian_pines_corrected.mat':
+        X = scipy.io.loadmat('data/Indian_pines/Indian_pines_corrected.mat')['indian_pines_corrected']
+        y = scipy.io.loadmat('data/Indian_pines/Indian_pines_gt.mat')['indian_pines_gt']
+
     return X, y
 
 def flatten_data(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -35,7 +38,7 @@ def flatten_data(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     y_flat = y.flatten()
     return X_flat, y_flat
 
-def initiate_population(ind: int, n: int) -> np.ndarray:
+def initiate_population(ind: int, n: int, band_pool: int) -> np.ndarray:
     """
     Initializes a Population for the genetic algorithm.
     
@@ -49,7 +52,10 @@ def initiate_population(ind: int, n: int) -> np.ndarray:
     Returns: 
         population : array of shape (ind, n).
     """
-    population = np.random.randint(0, 200, size=(ind, n))
+    population = np.stack([np.random.choice(band_pool, size=n, replace=False)
+                           for _ in range(ind)], 
+                           axis=0)
+
     return population
 
 
@@ -62,6 +68,7 @@ def crossover_single_point(parent1: np.ndarray, parent2: np.ndarray) -> tuple[np
         - Create two offsprings.
     """
     # Choose a random crossover point (must be at least 1 and less than chromosome length)
+
     point = np.random.randint(1, len(parent1))
     print("Crossover point:", point)
     offspring1 = np.concatenate((parent1[:point], parent2[point:]))
@@ -104,7 +111,7 @@ def crossover_uniform(parent1: np.ndarray, parent2: np.ndarray, p: float = 0.5) 
 
     return offspring1, offspring2
 
-def crossover_blending(parent1: np.ndarray, parent2: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def crossover_blending(parent1: np.ndarray, parent2: np.ndarray, band_pool: int) -> tuple[np.ndarray, np.ndarray]:
     """
     For each gene position i, the Offspring-genes are computed using a convex combination of its Parent-genes
     """
@@ -112,14 +119,14 @@ def crossover_blending(parent1: np.ndarray, parent2: np.ndarray) -> tuple[np.nda
     beta = np.random.uniform(low=0.0, high=1.0, size=len(parent1))
 
     # Compute offspring genes
-    offspring1 = np.clip(np.round(parent1 * beta + parent2 * (1 - beta)), 0, 199).astype(int)
-    offspring2 = np.clip(np.round(parent2 * beta + parent1 * (1 - beta)), 0, 199).astype(int)
+    offspring1 = np.clip(np.round(parent1 * beta + parent2 * (1 - beta)), 0, band_pool-1).astype(int)
+    offspring2 = np.clip(np.round(parent2 * beta + parent1 * (1 - beta)), 0, band_pool-1).astype(int)
 
     return offspring1, offspring2
 
 
 
-def mutate_random(population: np.ndarray, num: int) -> np.ndarray:
+def mutate_random(population: np.ndarray, num: int, band_pool: int) -> np.ndarray:
     """
     Mutates by randomly changing one gene to a new spectral band index
     """
@@ -138,11 +145,11 @@ def mutate_random(population: np.ndarray, num: int) -> np.ndarray:
     # Apply Mutation: for each chosen position, assign a random band value in [0,199]
     for index in chosen_indices:
         i, j = eligible_positions[index]
-        population[i, j] = np.random.randint(0, 200)
+        population[i, j] = np.random.randint(0, band_pool)
 
     return population
 
-def mutate_normal(population: np.ndarray, num: int) -> np.ndarray:
+def mutate_normal(population: np.ndarray, num: int, band_pool: int) -> np.ndarray:
     """
     For a given gene at position (i, j) with value p, the mutated value is computed as:
        p' = p + sigma * z
@@ -166,12 +173,22 @@ def mutate_normal(population: np.ndarray, num: int) -> np.ndarray:
 
         # Standard deviation computed across all candidates (chromosomes) at gene position j
         sigma = np.std(population[:, j])
-        # Sample z from standard normal distribution
-        z = np.random.normal(0, 1)
 
-        mutated_gene_value = current_gene_value + sigma * z
-        mutated_value = int(np.clip(round(mutated_gene_value), 0, 199))
-        population[i, j] = mutated_gene_value
+        # Prepare the set of “already-used” bands in this chromosome
+        row_set = set(population[i])  
+        row_set.remove(current_gene_value)  # we’re about to replace `current`
+
+        # Sample z until one is not in row_set
+        for _ in range(10):
+            z = np.random.normal(0, 1)
+            cand = int(np.clip(round(current_gene_value + sigma * z), 0, band_pool - 1))
+            if cand not in row_set:
+                population[i, j] = cand
+                break
+        else:
+            # pick randomly from unused bands
+            unused = list(set(range(band_pool)) - set(population[i]))
+            population[i, j] = np.random.choice(unused)
 
     return population
 
