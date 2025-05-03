@@ -17,6 +17,10 @@ def read_HSI(Image: str) -> tuple[np.ndarray, np.ndarray]:
         X = scipy.io.loadmat('data/Indian_pines/Indian_pines_corrected.mat')['indian_pines_corrected']
         y = scipy.io.loadmat('data/Indian_pines/Indian_pines_gt.mat')['indian_pines_gt']
 
+    if Image == 'data/Salinas/Salinas_corrected.mat':
+        X = scipy.io.loadmat('data/Salinas/Salinas_corrected.mat')['salinas_corrected']
+        y = scipy.io.loadmat('data/Salinas/Salinas_gt.mat')['salinas_gt']
+
     return X, y
 
 def flatten_data(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

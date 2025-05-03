@@ -28,7 +28,7 @@ def genetic_algorithm(Image: str, NUM_BANDS: int, POP_SIZE: int, GENERATIONS: in
     Returns -> the Best Candidate (set of spectral-band indices)
     """
 
-    num = 10                                                                                             # Number of positions in a population, to mutate
+    num_mutate = 10                                                                                             # Number of positions in a population, to mutate
     
     # Load and preprocess the HyperSpectral Image.
     X, y = read_HSI(Image = Image)
@@ -108,7 +108,7 @@ def genetic_algorithm(Image: str, NUM_BANDS: int, POP_SIZE: int, GENERATIONS: in
         print("New population:\n", population)
 
         # 4. Mutation of the Population
-        population = mutate_normal(population, num, band_pool)                                                 # in python, the same 'population' will be modified 
+        population = mutate_normal(population, num_mutate, band_pool)                                                 # in python, the same 'population' will be modified 
         
     # Output the final results.
     print("\nFinal Population (Best Band Combinations):\n", population)
